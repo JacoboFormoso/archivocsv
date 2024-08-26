@@ -1,0 +1,163 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pygame
+import tkinter as tk
+from tkinter import filedialog, LabelFrame
+from scipy.fft import fft
+from scipy.io import wavfile
+from pydub import AudioSegment
+import io
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+# Configuración de estilo de Seaborn y Matplotlib
+sns.set_style("darkgrid")
+plt.style.use('dark_background')  # Usar un fondo oscuro para los gráficos
+
+# Colores personalizados
+tk_bg_color = "#2e2e2e"  # Fondo de la interfaz de Tkinter
+plot_bg_color = "#3c3f41"  # Fondo de los gráficos para que combine con Tkinter
+grid_color = "#4e5154"  # Color de la cuadrícula en los gráficos
+
+# Configuraciones globales de Matplotlib
+plt.rcParams['figure.facecolor'] = plot_bg_color
+plt.rcParams['axes.facecolor'] = plot_bg_color
+plt.rcParams['axes.edgecolor'] = grid_color
+plt.rcParams['axes.labelcolor'] = 'white'
+plt.rcParams['xtick.color'] = 'white'
+plt.rcParams['ytick.color'] = 'white'
+plt.rcParams['grid.color'] = grid_color
+plt.rcParams['text.color'] = 'white'
+
+def fourier_calculation(y, sample_rate=44100):
+    '''Aplicando fast fourier transform'''
+    yf = fft(y)
+    N = len(y)
+    yf = 2.0 / N * np.abs(yf[0: N // 2])  # // es la división entera
+    xf = np.linspace(0.0, 1 / 2 * sample_rate, N // 2)
+    return yf, xf
+
+def plot_tiempo_frecuencia_espectrograma(y, sample_rate=44100, tiempo_max=-1, f_max_fft=3000, f_max_espectrograma=3000):
+    '''Plotea la señal en dominio del tiempo, en dominio de la frecuencia y espectrograma'''
+    
+    # Crear la figura con un diseño específico
+    fig = plt.figure(figsize=(10, 6))
+    
+    # Grafico 1: Dominio del tiempo
+    ax1 = fig.add_subplot(2, 2, 1)
+    x = np.linspace(0, len(y) / sample_rate, len(y))
+    ax1.plot(x, y)
+    if tiempo_max != -1:
+        ax1.set_xlim([0, tiempo_max])
+    ax1.set_title("Dominio del Tiempo")
+    ax1.grid()
+
+    # Grafico 2: Dominio de la frecuencia (FFT)
+    ax2 = fig.add_subplot(2, 2, 2)
+    yf, xf = fourier_calculation(y, sample_rate)
+    ax2.plot(xf, yf)
+    ax2.set_xlim([0, f_max_fft])
+    ax2.set_xlabel('Freq (Hz)')
+    ax2.set_ylabel('|Y(freq)|')
+    ax2.set_title("Transformada de Fourier (FFT)")
+    ax2.grid()
+
+    # Grafico 3: Espectrograma
+    ax3 = fig.add_subplot(2, 1, 2)
+    ax3.specgram(y, Fs=sample_rate, cmap='jet')
+    ax3.set_ylim([0, f_max_espectrograma])
+    ax3.set_ylabel('Frequency [Hz]')
+    ax3.set_xlabel('Time [sec]')
+    ax3.set_title("Espectrograma")
+    ax3.grid()
+
+    plt.tight_layout()
+
+    # Mostrar gráficos en el canvas correspondiente
+    display_on_canvas(fig, plot_canvas)
+
+def display_on_canvas(fig, canvas_widget):
+    '''Función para mostrar la figura en un widget canvas de Tkinter'''
+    for widget in canvas_widget.winfo_children():
+        widget.destroy()
+
+    canvas = FigureCanvasTkAgg(fig, master=canvas_widget)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+def play_audio():
+    pygame.mixer.music.play()
+
+def load_file():
+    global data, samplerate
+    file_path = filedialog.askopenfilename()
+    if file_path:
+        if file_path.endswith('.mp3'):
+            audio = AudioSegment.from_mp3(file_path)
+            wav_data = io.BytesIO()
+            audio.export(wav_data, format="wav")
+            wav_data.seek(0)
+            samplerate, data = wavfile.read(wav_data)
+        else:
+            samplerate, data = wavfile.read(file_path)
+
+        bit_depth = data.dtype.itemsize * 8
+        num_channels = data.shape[1] if len(data.shape) > 1 else 1
+        minutos = int(data.shape[0] / samplerate / 60)
+        segundos = int(data.shape[0] / samplerate % 60)
+
+        channel_label.config(text=f"N° de Canales: {num_channels}")
+        duration_label.config(text=f"Duración: {minutos} min {segundos} seg")
+        samplerate_label.config(text=f"Frec. de muestreo: {samplerate} Hz")
+        bitdepth_label.config(text=f"Profundidad de bits: {bit_depth} bits")
+
+        plot_tiempo_frecuencia_espectrograma(data[:, 0] if num_channels > 1 else data, samplerate)
+        pygame.mixer.init(frequency=samplerate)
+        pygame.mixer.music.load(file_path)
+
+# Crear la interfaz gráfica
+root = tk.Tk()
+root.title("Reproductor de Audio")
+root.configure(bg=tk_bg_color)
+
+# Paleta de colores moderna
+frame_bg = "#3c3f41"
+button_bg = "#4e5154"
+button_fg = "#ffffff"
+label_fg = "#ffffff"
+
+# Frame para cargar y reproducir el archivo
+top_frame = tk.Frame(root, bg=frame_bg, padx=10, pady=10)
+top_frame.pack(fill="x")
+
+load_button = tk.Button(top_frame, text="Subir archivo", command=load_file, bg=button_bg, fg=button_fg)
+load_button.pack(side="left", padx=10)
+
+play_button = tk.Button(top_frame, text="Reproducir audio", command=play_audio, bg=button_bg, fg=button_fg)
+play_button.pack(side="right", padx=10)
+
+# Frame para la información del archivo
+info_frame = LabelFrame(root, text="Información del archivo", bg=frame_bg, fg=label_fg, padx=10, pady=10)
+info_frame.pack(fill="x", padx=10, pady=10)
+
+channel_label = tk.Label(info_frame, text="N° de Canales:", bg=frame_bg, fg=label_fg)
+channel_label.grid(row=0, column=0, padx=5, pady=5)
+
+duration_label = tk.Label(info_frame, text="Duración:", bg=frame_bg, fg=label_fg)
+duration_label.grid(row=0, column=1, padx=5, pady=5)
+
+samplerate_label = tk.Label(info_frame, text="Frec. de muestreo:", bg=frame_bg, fg=label_fg)
+samplerate_label.grid(row=1, column=0, padx=5, pady=5)
+
+bitdepth_label = tk.Label(info_frame, text="Profundidad de bits:", bg=frame_bg, fg=label_fg)
+bitdepth_label.grid(row=1, column=1, padx=5, pady=5)
+
+# Frame para los gráficos
+plot_frame = LabelFrame(root, text="Visualización", bg=frame_bg, fg=label_fg, padx=10, pady=10)
+plot_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+# Canvas para mostrar los gráficos en una disposición compacta
+plot_canvas = tk.Frame(plot_frame, bg="white", width=800, height=600)
+plot_canvas.pack(fill="both", expand=True)
+
+root.mainloop()
