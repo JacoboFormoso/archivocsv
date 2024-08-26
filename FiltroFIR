@@ -1,0 +1,83 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import sounddevice as sd
+
+def moving_average_filter(x, window_size):
+    """Aplica un filtro de media móvil simple a la señal."""
+    y = np.zeros_like(x)
+    for i in range(window_size, len(x)):
+        y[i] = y[i-1] + (x[i] - x[i-window_size]) / window_size
+    return y
+
+def ema_filter(x, alpha):
+    """Aplica un filtro de media móvil exponencial (EMA) a la señal."""
+    y = np.zeros_like(x)
+    y[0] = x[0]
+    for i in range(1, len(x)):
+        y[i] = alpha * x[i] + (1 - alpha) * y[i-1]
+    return y
+
+def fourier_calculation(y, sample_rate):
+    """Calcula la transformada rápida de Fourier (FFT) de la señal."""
+    n = len(y)
+    yf = np.fft.fft(y)
+    xf = np.fft.fftfreq(n, 1 / sample_rate)
+    return np.abs(yf[:n//2]), xf[:n//2]
+
+def plot_signals(t, original, ma_filtered, ema_filtered, window_size, alpha, sample_rate):
+    """Plotea la señal original y las filtradas, junto con el espectro de frecuencias."""
+    plt.figure(figsize=(15, 10))
+    
+    # Señal en el dominio del tiempo
+    plt.subplot(2, 1, 1)
+    plt.plot(t, original, label='Original')
+    plt.plot(t, ma_filtered, label=f'Media Móvil Simple (W={window_size})', linestyle='--')
+    plt.plot(t, ema_filtered, label=f'Media Móvil Exponencial (alpha={alpha})', linestyle='--')
+    plt.title('Señal Original y Filtradas')
+    plt.xlabel('Tiempo [s]')
+    plt.ylabel('Amplitud')
+    plt.legend()
+    plt.grid()
+    
+    # Espectro de frecuencias
+    plt.subplot(2, 1, 2)
+    yf_original, xf = fourier_calculation(original, sample_rate)
+    yf_ma, _ = fourier_calculation(ma_filtered, sample_rate)
+    yf_ema, _ = fourier_calculation(ema_filtered, sample_rate)
+    plt.plot(xf, yf_original, label='Original')
+    plt.plot(xf, yf_ma, label=f'Media Móvil Simple (W={window_size})', linestyle='--')
+    plt.plot(xf, yf_ema, label=f'Media Móvil Exponencial (alpha={alpha})', linestyle='--')
+    plt.title('Espectro de Frecuencias')
+    plt.xlabel('Frecuencia [Hz]')
+    plt.ylabel('Magnitud')
+    plt.xlim([0, 3000])  # Limitando el rango de frecuencias para mejor visualización
+    plt.legend()
+    plt.grid()
+    
+    plt.tight_layout()
+    plt.show()
+
+# Configuración de parámetros
+duration = 5  # Duración en segundos
+sample_rate = 44100  # Frecuencia de muestreo
+
+# Captura de audio
+print("Comenzando la grabación...")
+audio = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype='float64')
+sd.wait()
+audio = audio.flatten()  # Aplanar la señal capturada
+print("Grabación finalizada")
+
+# Ejes de tiempo
+t = np.linspace(0, duration, len(audio))
+
+# Parámetros de los filtros
+window_size = 50  # Tamaño de la ventana para el filtro de media móvil simple
+alpha = 0.2  # Parámetro de suavizado para el filtro EMA
+
+# Aplicar los filtros
+ma_filtered = moving_average_filter(audio, window_size)
+ema_filtered = ema_filter(audio, alpha)
+
+# Visualizar la señal original y las filtradas
+plot_signals(t, audio, ma_filtered, ema_filtered, window_size, alpha, sample_rate)

@@ -1,0 +1,27 @@
+import numpy as np
+import sounddevice as sd
+
+# Frecuencias de las notas en la escala pentatónica menor de La
+notas = {
+    'A': 440.00,  # La
+    'C': 523.25,  # Do
+    'D': 587.33,  # Re
+    'E': 659.25,  # Mi
+    'G': 783.99   # Sol
+}
+
+# Crear una secuencia de notas
+escala = [notas['A'], notas['C'], notas['D'], notas['E'], notas['G'], notas['A'] * 2]
+
+# Generar las ondas de las notas
+fs = 22050 # Frecuencia de muestreo
+duracion = 1  # Duración de cada nota en segundos
+t = np.linspace(0, duracion, int(fs * duracion), endpoint=False)
+
+# Crear una señal combinada de todas las notas
+señal = np.concatenate([np.sin(2 * np.pi * f * t) for f in escala])
+
+# Reproducir la señal
+sd.play(señal, fs)
+sd.wait()  # Esperar a que termine la reproducción
+

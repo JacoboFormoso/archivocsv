@@ -1,0 +1,150 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import sounddevice as sd
+
+def square_wave(frequency, amplitude, duration, sample_rate):
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+    return amplitude * np.sign(np.sin(2 * np.pi * frequency * t))
+
+def triangular_wave(frequency, amplitude, duration, sample_rate):
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+    return amplitude * (2 * np.abs(2 * (t * frequency - np.floor(t * frequency + 0.5))) - 1)
+
+def plot_frequency_response(signal, sample_rate, title):
+    n = len(signal)
+    k = np.arange(n)
+    T = n / sample_rate
+    frq = k / T
+    frq = frq[range(n // 2)]
+
+    Y = np.fft.fft(signal) / n
+    Y = Y[range(n // 2)]
+
+    plt.plot(frq, abs(Y))
+    plt.title(title)
+    plt.xlabel("Frecuencia [Hz]")
+    plt.ylabel("Amplitud")
+    plt.grid()
+
+def quantize(signal, num_bits, vref_plus, vref_minus):
+    # Calcular el número de niveles de cuantización
+    num_levels = 2 ** num_bits
+    
+    # Normalizar la señal entre Vref- y Vref+
+    signal_normalized = (signal - vref_minus) / (vref_plus - vref_minus)
+    
+    # Cuantizar la señal
+    quantized_signal = np.round(signal_normalized * (num_levels - 1)) / (num_levels - 1)
+    
+    # Desnormalizar la señal
+    quantized_signal = quantized_signal * (vref_plus - vref_minus) + vref_minus
+    
+    return quantized_signal
+
+def menu():
+    while True:
+        try:
+            sample_rate = int(input("Ingresa la tasa de muestreo (Hz): "))
+            duration = float(input("Ingresa la duración (segundos): "))
+            amplitude = float(input("Ingresa la amplitud: "))
+            square_freq = float(input("Ingresa la frecuencia de la onda cuadrada (Hz): "))
+            triangular_freq = float(input("Ingresa la frecuencia de la onda triangular (Hz): "))
+            num_bits = int(input("Ingresa el número de bits del cuantificador: "))
+            vref_plus = float(input("Ingresa el valor de Vref+ (amplitud máxima): "))
+            vref_minus = float(input("Ingresa el valor de Vref- (amplitud mínima): "))
+
+            square = square_wave(square_freq, amplitude, duration, sample_rate)
+            triangular = triangular_wave(triangular_freq, amplitude, duration, sample_rate)
+            combined_wave = square + triangular
+
+            # Graficar la respuesta en frecuencia de las señales originales
+            plt.figure(figsize=(10, 8))
+
+            plt.subplot(3, 1, 1)
+            plot_frequency_response(square, sample_rate, "Onda Cuadrada")
+
+            plt.subplot(3, 1, 2)
+            plot_frequency_response(triangular, sample_rate, "Onda Triangular")
+
+            plt.subplot(3, 1, 3)
+            plot_frequency_response(combined_wave, sample_rate, "Suma de Onda Cuadrada y Onda Triangular")
+
+            plt.tight_layout()
+            plt.show()
+
+            # Cuantificar las señales
+            quantized_square = quantize(square, num_bits, vref_plus, vref_minus)
+            quantized_triangular = quantize(triangular, num_bits, vref_plus, vref_minus)
+            quantized_combined = quantize(combined_wave, num_bits, vref_plus, vref_minus)
+
+            # Graficar la respuesta en frecuencia de las señales cuantizadas
+            plt.figure(figsize=(10, 8))
+
+            plt.subplot(3, 1, 1)
+            plot_frequency_response(quantized_square, sample_rate, f"Onda Cuadrada Cuantizada ({num_bits} bits)")
+
+            plt.subplot(3, 1, 2)
+            plot_frequency_response(quantized_triangular, sample_rate, f"Onda Triangular Cuantizada ({num_bits} bits)")
+
+            plt.subplot(3, 1, 3)
+            plot_frequency_response(quantized_combined, sample_rate, f"Suma de Onda Cuadrada y Onda Triangular Cuantizada ({num_bits} bits)")
+
+            plt.tight_layout()
+            plt.show()
+
+            # Graficar la forma de onda de las señales cuantizadas en función del tiempo
+            t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+
+            plt.figure(figsize=(10, 8))
+
+            plt.subplot(3, 1, 1)
+            plt.plot(t, quantized_square)
+            plt.title(f"Onda Cuadrada Cuantizada ({num_bits} bits)")
+            plt.xlabel("Tiempo [s]")
+            plt.ylabel("Amplitud")
+            plt.grid()
+
+            plt.subplot(3, 1, 2)
+            plt.plot(t, quantized_triangular)
+            plt.title(f"Onda Triangular Cuantizada ({num_bits} bits)")
+            plt.xlabel("Tiempo [s]")
+            plt.ylabel("Amplitud")
+            plt.grid()
+
+            plt.subplot(3, 1, 3)
+            plt.plot(t, quantized_combined)
+            plt.title(f"Suma de Onda Cuadrada y Onda Triangular Cuantizada ({num_bits} bits)")
+            plt.xlabel("Tiempo [s]")
+            plt.ylabel("Amplitud")
+            plt.grid()
+
+            plt.tight_layout()
+            plt.show()
+
+            while True:
+                print("\nSelecciona una opción para reproducir:")
+                print("1. Reproducir onda cuadrada")
+                print("2. Reproducir onda triangular")
+                print("3. Reproducir la suma de ambas")
+                print("4. Salir")
+                choice = input("Ingresa el número de tu elección: ")
+
+                if choice == '1':
+                    sd.play(quantized_square, sample_rate)
+                    sd.wait()
+                elif choice == '2':
+                    sd.play(quantized_triangular, sample_rate)
+                    sd.wait()
+                elif choice == '3':
+                    sd.play(quantized_combined, sample_rate)
+                    sd.wait()
+                elif choice == '4':
+                    print("Saliendo del programa.")
+                    break
+                else:
+                    print("Opción no válida. Por favor, intenta de nuevo.")
+        except ValueError:
+            print("Entrada no válida. Por favor, ingresa valores numéricos correctos.")
+
+if __name__ == "__main__":
+    menu()

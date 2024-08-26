@@ -1,0 +1,62 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Generación de los primeros 50 valores de n
+n = np.arange(50)
+y = np.cos(n)
+
+# Generación de la máscara para los valores menores a cero
+r = [1 if val >= 0 else 0 for val in y]
+
+# Modificación de los valores de y de acuerdo a r
+res = np.array([0 if r[i] == 0 else a for i, a in enumerate(y)])
+
+# Graficar la secuencia original y la secuencia modificada
+plt.figure(figsize=(12, 6))
+
+plt.subplot(2, 1, 1)
+plt.stem(n, y)
+plt.title('Secuencia Original y = cos(n)')
+plt.xlabel('n')
+plt.ylabel('Amplitud')
+plt.grid(True)
+
+plt.subplot(2, 1, 2)
+plt.stem(n, res)
+plt.title('Secuencia Modificada (valores negativos a cero)')
+plt.xlabel('n')
+plt.ylabel('Amplitud')
+plt.grid(True)
+
+plt.tight_layout()
+plt.show()
+
+# Parte 2: Secuencia senoidal discreta con 12 muestras por ciclo
+
+# Número de muestras por ciclo
+muestras_por_ciclo = 12
+
+# Frecuencia angular (en radianes) para 12 muestras por ciclo
+frecuencia_angular = 2 * np.pi / muestras_por_ciclo
+
+# Número de ciclos a graficar
+num_ciclos = 5
+
+# Número total de muestras
+num_muestras = num_ciclos * muestras_por_ciclo
+
+# Generación del índice de muestras
+n_senoidal = np.arange(num_muestras)
+
+# Cálculo de la secuencia senoidal
+y_senoidal = np.sin(frecuencia_angular * n_senoidal)
+
+# Graficar la secuencia senoidal discreta
+plt.figure(figsize=(12, 4))
+plt.stem(n_senoidal, y_senoidal)
+plt.title('Secuencia Senoidal Discreta con 12 Muestras por Ciclo')
+plt.xlabel('Muestras (n)')
+plt.ylabel('Amplitud')
+plt.grid(True)
+plt.show()
+

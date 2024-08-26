@@ -1,0 +1,159 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import sounddevice as sd
+import tkinter as tk
+from tkinter import ttk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+def moving_average_filter(x, window_size):
+    """Aplica un filtro de media móvil simple a la señal."""
+    y = np.zeros_like(x)
+    for i in range(window_size, len(x)):
+        y[i] = y[i-1] + (x[i] - x[i-window_size]) / window_size
+    return y
+
+def ema_filter(x, alpha):
+    """Aplica un filtro de media móvil exponencial (EMA) a la señal."""
+    y = np.zeros_like(x)
+    y[0] = x[0]
+    for i in range(1, len(x)):
+        y[i] = alpha * x[i] + (1 - alpha) * y[i-1]
+    return y
+
+def fourier_calculation(y, sample_rate):
+    """Calcula la transformada rápida de Fourier (FFT) de la señal."""
+    n = len(y)
+    yf = np.fft.fft(y)
+    xf = np.fft.fftfreq(n, 1 / sample_rate)
+    return np.abs(yf[:n//2]), xf[:n//2]
+
+def plot_signals(original, ma_filtered, ema_filtered, sample_rate, window_size, alpha):
+    """Plotea la señal original y las filtradas, junto con el espectro de frecuencias."""
+    t = np.linspace(0, len(original) / sample_rate, len(original))
+    
+    fig, ax = plt.subplots(2, 1, figsize=(10, 8))
+    
+    # Señal en el dominio del tiempo
+    ax[0].plot(t, original, label='Original')
+    
+    if var_ma.get():
+        ax[0].plot(t, ma_filtered, label=f'Media Móvil Simple (W={window_size})', linestyle='--')
+    
+    if var_ema.get():
+        ax[0].plot(t, ema_filtered, label=f'Media Móvil Exponencial (alpha={alpha})', linestyle='--')
+    
+    ax[0].set_title('Señal Original y Filtradas')
+    ax[0].set_xlabel('Tiempo [s]')
+    ax[0].set_ylabel('Amplitud')
+    ax[0].legend()
+    ax[0].grid()
+    
+    # Espectro de frecuencias
+    yf_original, xf = fourier_calculation(original, sample_rate)
+    
+    ax[1].plot(xf, yf_original, label='Original')
+    
+    if var_ma.get():
+        yf_ma, _ = fourier_calculation(ma_filtered, sample_rate)
+        ax[1].plot(xf, yf_ma, label=f'Media Móvil Simple (W={window_size})', linestyle='--')
+    
+    if var_ema.get():
+        yf_ema, _ = fourier_calculation(ema_filtered, sample_rate)
+        ax[1].plot(xf, yf_ema, label=f'Media Móvil Exponencial (alpha={alpha})', linestyle='--')
+    
+    ax[1].set_title('Espectro de Frecuencias')
+    ax[1].set_xlabel('Frecuencia [Hz]')
+    ax[1].set_ylabel('Magnitud')
+    ax[1].set_xlim([0, 3000])  # Limitando el rango de frecuencias para mejor visualización
+    ax[1].legend()
+    ax[1].grid()
+    
+    fig.tight_layout()
+    
+    return fig
+
+def apply_filters():
+    """Captura audio, aplica los filtros según los checkboxes y sliders, y visualiza los resultados."""
+    # Configuración de parámetros
+    global audio, ma_filtered, ema_filtered  # Hacer las variables globales para ser utilizadas en otros lugares
+    duration = 5  # Duración en segundos
+    sample_rate = 44100  # Frecuencia de muestreo
+    window_size = int(slider_w.get())  # Tamaño de la ventana para el filtro de media móvil simple
+    alpha = slider_alpha.get()  # Parámetro de suavizado para el filtro EMA
+    
+    # Captura de audio
+    print("Comenzando la grabación...")
+    audio = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype='float64')
+    sd.wait()
+    audio = audio.flatten()  # Aplanar la señal capturada
+    print("Grabación finalizada")
+    
+    # Aplicar los filtros
+    ma_filtered = moving_average_filter(audio, window_size) if var_ma.get() else None
+    ema_filtered = ema_filter(audio, alpha) if var_ema.get() else None
+    
+    # Visualizar la señal original y las filtradas
+    fig = plot_signals(audio, ma_filtered, ema_filtered, sample_rate, window_size, alpha)
+    
+    # Integrar el gráfico en la interfaz de Tkinter
+    canvas = FigureCanvasTkAgg(fig, master=window)
+    canvas.draw()
+    canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+
+def play_original():
+    """Reproduce el audio original capturado."""
+    sd.play(audio, samplerate=44100)
+
+def play_ma():
+    """Reproduce el audio suavizado con Media Móvil Simple."""
+    if ma_filtered is not None:
+        sd.play(ma_filtered, samplerate=44100)
+    else:
+        print("El filtro de Media Móvil Simple no está habilitado.")
+
+def play_ema():
+    """Reproduce el audio suavizado con Media Móvil Exponencial."""
+    if ema_filtered is not None:
+        sd.play(ema_filtered, samplerate=44100)
+    else:
+        print("El filtro de Media Móvil Exponencial no está habilitado.")
+
+# Crear ventana de Tkinter
+window = tk.Tk()
+window.title("Filtro de Media Móvil")
+
+# Crear checkboxes para seleccionar filtros
+var_ma = tk.BooleanVar()
+var_ema = tk.BooleanVar()
+
+chk_ma = ttk.Checkbutton(window, text="Habilitar Media Móvil Simple", variable=var_ma)
+chk_ema = ttk.Checkbutton(window, text="Habilitar Media Móvil Exponencial", variable=var_ema)
+
+chk_ma.pack(anchor=tk.W)
+chk_ema.pack(anchor=tk.W)
+
+# Sliders para ajustar alpha y W
+slider_alpha = tk.Scale(window, from_=0, to=1, resolution=0.01, orient=tk.HORIZONTAL, label="Alpha (Media Móvil Exponencial)")
+slider_alpha.set(0.2)  # Valor inicial
+slider_alpha.pack(fill=tk.X, padx=10, pady=5)
+
+slider_w = tk.Scale(window, from_=0, to=1000, orient=tk.HORIZONTAL, label="W (Tamaño de Ventana - Media Móvil Simple)")
+slider_w.set(50)  # Valor inicial
+slider_w.pack(fill=tk.X, padx=10, pady=5)
+
+# Botón para aplicar filtros
+btn_apply = ttk.Button(window, text="Aplicar Filtros", command=apply_filters)
+btn_apply.pack(pady=10)
+
+# Botones para reproducir el audio
+btn_play_original = ttk.Button(window, text="Reproducir Audio Original", command=play_original)
+btn_play_original.pack(pady=5)
+
+btn_play_ma = ttk.Button(window, text="Reproducir Audio Suavizado (SMA)", command=play_ma)
+btn_play_ma.pack(pady=5)
+
+btn_play_ema = ttk.Button(window, text="Reproducir Audio Suavizado (EMA)", command=play_ema)
+btn_play_ema.pack(pady=5)
+
+# Correr la aplicación
+window.mainloop()
