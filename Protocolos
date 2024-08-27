@@ -1,0 +1,167 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import tkinter as tk
+from tkinter import ttk
+
+# Funciones para los diferentes pasos de la simulación
+def string_to_bin(message):
+    return ''.join(format(ord(char), '08b') for char in message)
+
+def hex_to_bin(hex_data):
+    return ''.join(format(int(c, 16), '04b') for c in hex_data)
+
+def nrz_encoding(binary_data):
+    encoded_signal = [1 if bit == '1' else 0 for bit in binary_data]
+    return encoded_signal
+
+def apply_stomp_protocol(binary_data):
+    stomp_frame = f"STOMP\x00{binary_data}\x00"
+    return stomp_frame.encode('utf-8').hex()
+
+def apply_ip_protocol(stomp_data):
+    ip_header = '4500'  # Ejemplo de cabecera IP
+    return ip_header + stomp_data
+
+def apply_tcp_protocol(ip_data):
+    tcp_header = '1234'  # Ejemplo de cabecera TCP
+    return tcp_header + ip_data
+
+def apply_ethernet_protocol(tcp_data):
+    ethernet_header = 'AAFF'  # Ejemplo de cabecera Ethernet
+    return ethernet_header + tcp_data
+
+def plot_graph(ax, x, y, title, xlabel, ylabel):
+    ax.clear()
+    ax.plot(x, y)
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True)
+
+# Función para actualizar los gráficos
+def update_graphs():
+    # Obtener el mensaje y el roll-off desde la interfaz
+    message = entry_message.get()
+    alpha = float(entry_alpha.get())
+
+    # Paso 1: Convertir el mensaje en binario
+    binary_data = string_to_bin(message)
+
+    # Mostrar la información en el cuadro de texto
+    text_info.delete(1.0, tk.END)
+    text_info.insert(tk.END, f"Mensaje original: {message}\n")
+    text_info.insert(tk.END, f"Mensaje en binario: {binary_data}\n")
+    text_info.insert(tk.END, f"Longitud en bits: {len(binary_data)}\n")
+
+    # Paso 2: Aplicar los protocolos
+    stomp_data = apply_stomp_protocol(binary_data)
+    ip_data = apply_ip_protocol(stomp_data)
+    tcp_data = apply_tcp_protocol(ip_data)
+    ethernet_data = apply_ethernet_protocol(tcp_data)
+
+    # Convertir la señal hexadecimal a binario
+    binary_data_after_protocols = hex_to_bin(ethernet_data)
+
+    # Mostrar la información de los protocolos aplicados
+    text_info.insert(tk.END, f"\n--- Protocolo STOMP aplicado ---\nSTOMP Frame: {stomp_data}\n")
+    text_info.insert(tk.END, f"\n--- Protocolo IP aplicado ---\nIP Header + STOMP: {ip_data}\n")
+    text_info.insert(tk.END, f"\n--- Protocolo TCP aplicado ---\nTCP Header + IP + STOMP: {tcp_data}\n")
+    text_info.insert(tk.END, f"\n--- Protocolo Ethernet aplicado ---\nEthernet + TCP + IP + STOMP: {ethernet_data}\n")
+    text_info.insert(tk.END, f"\n--- Señal Codificada en NRZ ---\nMensaje en binario después de protocolos: {binary_data_after_protocols}\n")
+    text_info.insert(tk.END, f"Longitud NRZ esperada: {len(binary_data_after_protocols)}\n")
+
+    # Paso 3: Codificar con NRZ la señal encapsulada
+    nrz_signal = nrz_encoding(binary_data_after_protocols)
+
+    # Mostrar los valores después de aplicar NRZ
+    nrz_binary = ''.join(map(str, nrz_signal))
+    text_info.insert(tk.END, f"NRZ Signal: {nrz_binary}\n")
+    text_info.insert(tk.END, f"Longitud NRZ: {len(nrz_signal)}\n")
+
+    # Paso 4: Generación del filtro de caída sinc
+    fB = 32e9    # Velocidad de símbolos (baud rate)
+    T = 1 / fB   # Tiempo entre símbolos
+    M = 8        # Factor de sobremuestreo
+    fs = fB * M  # Sample rate
+    L = 20       # (2 * L * M + 1) es el largo del filtro sobremuestreado
+
+    t = np.arange(-L, L, 1 / M) * T
+    gn = np.sinc(t / T) * np.cos(np.pi * alpha * t / T) / (1 - 4 * alpha**2 * t**2 / T**2)
+
+    # Paso 5: Convolución de la señal NRZ con el filtro
+    nrz_signal_oversampled = np.repeat(nrz_signal, M)
+    transmitted_signal = np.convolve(nrz_signal_oversampled, gn, mode='same')
+
+    # Actualizar gráficos
+    plot_graph(ax1, range(len(gn)), gn, "Filtro de Caída Sinc (g[n])", "Tiempo", "Amplitud")
+    plot_graph(ax2, range(len(binary_data)), [int(bit) for bit in binary_data], "Señal del Mensaje en Binario", "Tiempo", "Amplitud")
+    plot_graph(ax3, range(len(nrz_signal)), nrz_signal, "Señal Encapsulada y Codificada en NRZ", "Tiempo", "Amplitud")
+    plot_graph(ax4, range(len(transmitted_signal)), transmitted_signal, "Señal Transmitida Después del Filtro de Caída Sinc", "Tiempo (muestras)", "Amplitud")
+
+    canvas1.draw()
+    canvas2.draw()
+    canvas3.draw()
+    canvas4.draw()
+
+# Configuración de la interfaz Tkinter
+root = tk.Tk()
+root.title("Simulación de Comunicación")
+
+# Crear un marco principal con un canvas y una scrollbar
+main_frame = tk.Frame(root)
+main_frame.pack(fill=tk.BOTH, expand=1)
+
+canvas = tk.Canvas(main_frame)
+canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
+
+scrollbar = ttk.Scrollbar(main_frame, orient=tk.VERTICAL, command=canvas.yview)
+scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+canvas.configure(yscrollcommand=scrollbar.set)
+canvas.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+# Crear un marco dentro del canvas
+second_frame = tk.Frame(canvas)
+
+# Añadir el marco a la ventana del canvas
+canvas.create_window((0,0), window=second_frame, anchor="nw")
+
+# Configurar los cuadros de entrada
+tk.Label(second_frame, text="Mensaje:").grid(row=0, column=0, padx=5, pady=5)
+entry_message = tk.Entry(second_frame)
+entry_message.grid(row=0, column=1, padx=5, pady=5)
+entry_message.insert(0, "Hola")
+
+tk.Label(second_frame, text="Roll-off:").grid(row=0, column=2, padx=5, pady=5)
+entry_alpha = tk.Entry(second_frame)
+entry_alpha.grid(row=0, column=3, padx=5, pady=5)
+entry_alpha.insert(0, "0.1")
+
+update_button = tk.Button(second_frame, text="Actualizar", command=update_graphs)
+update_button.grid(row=0, column=4, padx=5, pady=5)
+
+# Crear figuras y ejes para los gráficos
+fig1, ax1 = plt.subplots(figsize=(8, 2))
+fig2, ax2 = plt.subplots(figsize=(8, 2))
+fig3, ax3 = plt.subplots(figsize=(8, 2))
+fig4, ax4 = plt.subplots(figsize=(8, 2))
+
+canvas1 = FigureCanvasTkAgg(fig1, master=second_frame)
+canvas1.get_tk_widget().grid(row=1, column=0, columnspan=4)
+
+canvas2 = FigureCanvasTkAgg(fig2, master=second_frame)
+canvas2.get_tk_widget().grid(row=2, column=0, columnspan=4)
+
+canvas3 = FigureCanvasTkAgg(fig3, master=second_frame)
+canvas3.get_tk_widget().grid(row=3, column=0, columnspan=4)
+
+canvas4 = FigureCanvasTkAgg(fig4, master=second_frame)
+canvas4.get_tk_widget().grid(row=4, column=0, columnspan=4)
+
+# Crear un cuadro de texto para mostrar la información a la derecha
+text_info = tk.Text(second_frame, width=50, height=20)
+text_info.grid(row=1, column=5, rowspan=4, padx=(10, 0))
+
+# Ejecutar la aplicación
+root.mainloop()

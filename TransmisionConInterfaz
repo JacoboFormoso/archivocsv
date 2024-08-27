@@ -1,0 +1,117 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import tkinter as tk
+from tkinter import ttk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+# Funciones para procesamiento de señales
+def string_to_bin(message):
+    return ''.join(format(ord(char), '08b') for char in message)
+
+def nrz_encoding(binary_data):
+    encoded_signal = []
+    for bit in binary_data:
+        if bit == '1':
+            encoded_signal.append(1)  # Nivel alto
+        else:
+            encoded_signal.append(0)  # Nivel bajo
+    return np.array(encoded_signal)
+
+def apply_transmitter_filter(signal, alpha, fB, M, L):
+    T = 1 / fB
+    t = np.arange(-L, L, 1 / M) * T
+    gn = np.sinc(t / T) * np.cos(np.pi * alpha * t / T) / (1 - 4 * alpha**2 * t**2 / T**2)
+    signal_oversampled = np.repeat(signal, M)
+    filtered_signal = np.convolve(signal_oversampled, gn, mode='same')
+    return filtered_signal, gn, t, signal_oversampled
+
+# Función para actualizar los gráficos
+def update_graphs():
+    message = entry_message.get()
+    alpha = float(entry_alpha.get())
+    
+    fB = 32e9
+    M = 8
+    L = 20
+    
+    binary_data = string_to_bin(message)
+    nrz_signal = nrz_encoding(binary_data)
+    transmitted_signal, gn, t, nrz_signal_oversampled = apply_transmitter_filter(nrz_signal, alpha, fB, M, L)
+    
+    # Graficar el filtro transmisor
+    plot_stem_graph(ax1, t, gn, 'Filtro Transmisor (Sinc)', 'Tiempo', 'Amplitud', color='blue')
+    
+    # Graficar la señal NRZ antes del filtro
+    plot_graph(ax2, np.arange(len(nrz_signal_oversampled)), nrz_signal_oversampled, 
+               'Señal NRZ sobremuestreada antes del filtro', 'Tiempo (muestras)', 'Amplitud', color='green')
+    
+    # Graficar la señal transmitida
+    plot_graph(ax3, np.arange(len(transmitted_signal)), transmitted_signal, 
+               'Señal transmitida después del filtro', 'Tiempo (muestras)', 'Amplitud', color='red')
+
+# Función para graficar señales continuas
+def plot_graph(ax, x, y, title, xlabel, ylabel, color):
+    ax.clear()
+    ax.plot(x, y, color=color)
+    ax.set_facecolor('#dfe6e9')
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True)
+    canvas.draw()
+
+# Función para graficar señales discretas con stem
+def plot_stem_graph(ax, x, y, title, xlabel, ylabel, color):
+    ax.clear()
+    ax.stem(x, y, linefmt=color, markerfmt='o', basefmt=" ")
+    ax.set_facecolor('#dfe6e9')
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True)
+    canvas.draw()
+
+# Configuración de la interfaz gráfica
+root = tk.Tk()
+root.title("Simulador de Transmisión de Señales")
+root.configure(bg='#2e3f4f')
+
+# Configuración del diseño de la interfaz
+frame = ttk.Frame(root, padding="10")
+frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+# Elementos de la interfaz
+ttk.Label(frame, text="Mensaje:", background='#2e3f4f', foreground='white').grid(column=0, row=0, sticky=tk.W)
+entry_message = ttk.Entry(frame, width=30)
+entry_message.grid(column=1, row=0, sticky=(tk.W, tk.E))
+
+ttk.Label(frame, text="Roll-off:", background='#2e3f4f', foreground='white').grid(column=2, row=0, sticky=tk.W)
+entry_alpha = ttk.Entry(frame, width=10)
+entry_alpha.grid(column=3, row=0, sticky=(tk.W, tk.E))
+
+ttk.Button(frame, text="Generar", command=update_graphs).grid(column=4, row=0, sticky=tk.W)
+
+# Configuración de los gráficos
+fig = plt.figure(figsize=(10, 7))
+fig.patch.set_facecolor('#2e3f4f')
+
+ax1 = plt.subplot2grid((3, 2), (0, 0), colspan=2, rowspan=1)
+ax2 = plt.subplot2grid((3, 2), (1, 0))
+ax3 = plt.subplot2grid((3, 2), (1, 1))
+
+
+canvas = FigureCanvasTkAgg(fig, master=root)
+canvas.get_tk_widget().grid(column=0, row=1, columnspan=5, padx=10, pady=10)
+
+# Reservar espacio para gráficos
+ax1.set_title("Filtro Transmisor (Sinc)")
+ax1.grid(True)
+ax2.set_title("Señal NRZ sobremuestreada antes del filtro")
+ax2.grid(True)
+ax3.set_title("Señal transmitida después del filtro")
+ax3.grid(True)
+canvas.draw()
+
+# Ajustar el tamaño de la ventana
+root.geometry("950x700")
+root.mainloop()
