@@ -1,0 +1,3 @@
+main
+detectarIntT3
+detectarIntT1
